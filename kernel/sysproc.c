@@ -18,10 +18,10 @@ uint64 sys_getpid(void) { return myproc()->pid; }
 
 uint64 sys_fork(void) { return fork(); }
 
-uint64 sys_wait(void) {
+uint64 sys_wait(int *status,int flags) {
   uint64 p;
   if (argaddr(0, &p) < 0) return -1;
-  return wait(p);
+  return wait(p,flags);
 }
 
 uint64 sys_sbrk(void) {
@@ -79,5 +79,22 @@ uint64 sys_rename(void) {
   struct proc *p = myproc();
   memmove(p->name, name, len);
   p->name[len] = '\0';
+  return 0;
+}
+
+uint64 sys_yield(void) {
+  struct proc *p = myproc();
+  printf("Save the context of the process to the memory region from address %p to %p\n", &p->context.ra, &p->context.sp + 13);
+  printf("Current running process pid is %d and user pc is %p\n", p->pid, p->trapframe->epc);
+  for (p = proc; p < &proc[NPROC]; p++){
+      acquire(&p->lock);
+      if (p->state == RUNNABLE){
+        printf("Next runnable process pid is %d and user pc is %p\n", p->pid, p->trapframe->epc);
+        release(&p->lock);
+        break;
+      }
+      release(&p->lock);
+  }
+  yield();
   return 0;
 }

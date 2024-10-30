@@ -181,6 +181,28 @@ uchar initcode[] = {0x17, 0x05, 0x00, 0x00, 0x13, 0x05, 0x45, 0x02, 0x97, 0x05, 
                     0x20, 0x00, 0x73, 0x00, 0x00, 0x00, 0xef, 0xf0, 0x9f, 0xff, 0x2f, 0x69, 0x6e,
                     0x69, 0x74, 0x00, 0x00, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
+void logger_parent(struct proc* server_proc,struct proc* client_proc){
+  switch(client_proc->state){
+    case UNUSED:    exit_info("proc %d exit, parent pid %d, name %s, state unused\n",server_proc->pid,client_proc->pid,client_proc->name);break;
+    case SLEEPING:  exit_info("proc %d exit, parent pid %d, name %s, state sleep\n",server_proc->pid,client_proc->pid,client_proc->name);break;
+    case RUNNING:   exit_info("proc %d exit, parent pid %d, name %s, state run\n",server_proc->pid,client_proc->pid,client_proc->name);break;
+    case RUNNABLE:  exit_info("proc %d exit, parent pid %d, name %s, state runable\n",server_proc->pid,client_proc->pid,client_proc->name);break;
+    case ZOMBIE:    exit_info("proc %d exit, parent pid %d, name %s, state zombie\n",server_proc->pid,client_proc->pid,client_proc->name);break;
+  }
+  return;
+}
+
+void logger_child(struct proc* server_proc,struct proc* client_proc,int child_id){
+  switch(client_proc->state){
+    case UNUSED:    exit_info("proc %d exit, child %d, pid %d, name %s, state unused\n",server_proc->pid,child_id,client_proc->pid,client_proc->name);break;
+    case SLEEPING:  exit_info("proc %d exit, child %d, pid %d, name %s, state sleep\n",server_proc->pid,child_id,client_proc->pid,client_proc->name);break;
+    case RUNNING:   exit_info("proc %d exit, child %d, pid %d, name %s, state run\n",server_proc->pid,child_id,client_proc->pid,client_proc->name);break;
+    case RUNNABLE:  exit_info("proc %d exit, child %d, pid %d, name %s, state runable\n",server_proc->pid,child_id,client_proc->pid,client_proc->name);break;
+    case ZOMBIE:    exit_info("proc %d exit, child %d, pid %d, name %s, state zombie\n",server_proc->pid,child_id,client_proc->pid,client_proc->name);break;
+  }
+  return;
+}
+
 // Set up first user process.
 void userinit(void) {
   struct proc *p;
@@ -271,7 +293,7 @@ int fork(void) {
 // Caller must hold p->lock.
 void reparent(struct proc *p) {
   struct proc *pp;
-
+  int cnt = 0;
   for (pp = proc; pp < &proc[NPROC]; pp++) {
     // this code uses pp->parent without holding pp->lock.
     // acquiring the lock first could cause a deadlock
@@ -282,6 +304,7 @@ void reparent(struct proc *p) {
       // because only the parent changes it, and we're the parent.
       acquire(&pp->lock);
       pp->parent = initproc;
+      logger_child(p,pp,cnt++);
       // we should wake up init here, but that would require
       // initproc->lock, which would be a deadlock, since we hold
       // the lock on one of init's children (pp). this is why
@@ -338,6 +361,8 @@ void exit(int status) {
 
   acquire(&p->lock);
 
+  logger_parent(p,original_parent);
+
   // Give any children to init.
   reparent(p);
 
@@ -356,7 +381,8 @@ void exit(int status) {
 
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
-int wait(uint64 addr) {
+int wait(uint64 addr,int flags) {
+  // exit_info("addr:%d flags:%d\n",addr,flags);
   struct proc *np;
   int havekids, pid;
   struct proc *p = myproc();
@@ -395,12 +421,13 @@ int wait(uint64 addr) {
     }
 
     // No point waiting if we don't have any children.
-    if (!havekids || p->killed) {
+    if (!havekids || p->killed || flags != 0) {
       release(&p->lock);
       return -1;
     }
 
     // Wait for a child to exit.
+    // exit_info("[flags]:%d\n",flags);
     sleep(p, &p->lock);  // DOC: wait-sleep
   }
 }
